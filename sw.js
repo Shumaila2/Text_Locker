@@ -3,10 +3,10 @@
    so updating or clearing this cache never touches them. */
 
 // Change this number whenever you want to force a fresh copy for everyone.
-const CACHE = "text-locker-v1";
+const CACHE = "text-locker-v2";
 
-// The files that make up the app.
-const FILES = ["./", "./index.html", "./manifest.webmanifest",
+// The files that make up the app. "./" is the main page.
+const FILES = ["./", "./manifest.webmanifest",
                "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 // 1. When first installed, save all the files.
@@ -24,17 +24,23 @@ self.addEventListener("activate", event => {
   );
 });
 
-// 3. Every time the app asks for a file: try the internet first (so updates arrive),
-//    save the fresh copy, and fall back to the saved copy if offline.
+// 3. Every time the app asks for a file: try the internet first (so updates arrive).
+//    Save a fresh copy only if it is a normal, successful answer (not a redirect).
+//    If offline, use the saved copy; for the main page, fall back to "./".
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
   event.respondWith(
     fetch(event.request)
       .then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(event.request, copy));
+        if (res.ok && res.type === "basic" && !res.redirected) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(event.request, copy));
+        }
         return res;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() =>
+        caches.match(event.request, { ignoreSearch: true })
+          .then(hit => hit || (event.request.mode === "navigate" ? caches.match("./") : undefined))
+      )
   );
 });
