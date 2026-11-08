@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Text Locker</title>
+<!-- PWA: these lines tell the phone this page can be installed like an app -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#1f6f78">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Locker">
+<style>
+  /* ---------- Colors live here as variables, so dark mode is easy ---------- */
+  :root {
+    --bg:#e9eef0; --surface:#ffffff; --ink:#14262b; --muted:#566a70;
+    --line:#c3d0d4; --accent:#1f6f78; --accent-ink:#ffffff; --danger:#a3362b;
+    color-scheme: light;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#10191c; --surface:#182529; --ink:#e4eef0; --muted:#93a9af;
+      --line:#2b3f45; --accent:#5fc0c9; --accent-ink:#0b1417; --danger:#ff8f82;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#10191c; --surface:#182529; --ink:#e4eef0; --muted:#93a9af;
+    --line:#2b3f45; --accent:#5fc0c9; --accent-ink:#0b1417; --danger:#ff8f82;
+    color-scheme: dark;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width:640px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font:600 28px/1.2 "Iowan Old Style", Georgia, serif; margin:8px 0 4px; }
+  p.lead { color:var(--muted); margin:0 0 20px; }
+  .panel { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  label { display:block; font-weight:600; margin:14px 0 6px; }
+  input, select, textarea {
+    width:100%; box-sizing:border-box; font:inherit; color:var(--ink);
+    background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px;
+  }
+  textarea { min-height:55vh; resize:vertical; line-height:1.55; }
+  button {
+    font:inherit; font-weight:600; border:1px solid var(--line); background:var(--surface);
+    color:var(--ink); border-radius:8px; padding:10px 14px; cursor:pointer;
+  }
+  button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  button.danger { color:var(--danger); }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
+    outline:3px solid var(--accent); outline-offset:2px;
+  }
+  .showrow { display:flex; align-items:center; gap:8px; font-weight:400; margin:10px 0 0; }
+  .showrow input { width:auto; margin:0; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .row > select { flex:1; min-width:140px; width:auto; }
+  .msg { min-height:1.5em; margin:10px 0 0; color:var(--muted); }
+  .msg.bad { color:var(--danger); }
+  details { margin-top:18px; color:var(--muted); }
+  summary { cursor:pointer; font-weight:600; }
+  details textarea { min-height:90px; margin-top:8px; font-size:13px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- SCREEN 1: first time only. Create the password. -->
+  <section id="setup" hidden>
+    <h1>Create your locker</h1>
+    <p class="lead">Your notes are locked with one password. It works on this device and never leaves it.</p>
+    <div class="panel">
+      <label for="pw1">Choose a password (8+ characters)</label>
+      <input id="pw1" type="password" autocomplete="new-password">
+      <label for="pw2">Type it again</label>
+      <input id="pw2" type="password" autocomplete="new-password">
+      <label class="showrow"><input type="checkbox" class="showpw" data-targets="pw1,pw2"> Show password</label>
+      <p class="msg bad">There is no password recovery. If you forget it, the notes cannot be opened by anyone.</p>
+      <div class="row"><button class="primary" id="btnCreate">Create locker</button></div>
+      <p class="msg" id="setupMsg"></p>
+    </div>
+    <details>
+      <summary>I already have a backup</summary>
+      <textarea id="restoreBox1" placeholder="Paste your backup text here"></textarea>
+      <div class="row"><button id="btnRestore1">Restore backup</button></div>
+    </details>
+  </section>
+
+  <!-- SCREEN 2: locked. Type the password. -->
+  <section id="unlock" hidden>
+    <h1>Text Locker</h1>
+    <p class="lead">Enter your password to open your notes.</p>
+    <div class="panel">
+      <label for="pwUnlock">Password</label>
+      <input id="pwUnlock" type="password" autocomplete="current-password">
+      <label class="showrow"><input type="checkbox" class="showpw" data-targets="pwUnlock"> Show password</label>
+      <div class="row"><button class="primary" id="btnUnlock">Unlock</button></div>
+      <p class="msg" id="unlockMsg"></p>
+    </div>
+    <details>
+      <summary>Restore from a backup</summary>
+      <textarea id="restoreBox2" placeholder="Paste your backup text here"></textarea>
+      <div class="row"><button id="btnRestore2">Restore backup</button></div>
+    </details>
+  </section>
+
+  <!-- SCREEN 3: unlocked. Edit your notes. -->
+  <section id="editor" hidden>
+    <h1>Your notes</h1>
+    <div class="row">
+      <select id="noteSelect" aria-label="Choose a note"></select>
+      <button id="btnAdd">Add note</button>
+      <button id="btnLock">Lock</button>
+    </div>
+    <label for="noteText" class="sr" style="position:absolute;left:-9999px">Note text</label>
+    <textarea id="noteText" style="margin-top:12px" placeholder="Type your note here"></textarea>
+    <div class="row">
+      <button class="primary" id="btnSave">Save</button>
+      <button id="btnBackup">Back up</button>
+      <button class="danger" id="btnDelete">Delete note</button>
+    </div>
+    <p class="msg" id="editMsg"></p>
+    <details id="backupWrap" hidden>
+      <summary>Backup text</summary>
+      <p>This is your locked data. Paste it into a notes app or a message to yourself. It is unreadable without your password.</p>
+      <textarea id="backupBox" readonly></textarea>
+    </details>
+  </section>
+
+</main>
+
+<script>
+/* =====================================================================
+   HOW THIS WORKS (read top to bottom)
+   1. Your password is turned into a strong key (PBKDF2 + a random "salt").
+   2. Each note is locked with that key (AES-GCM) before it is stored.
+   3. Locked notes are kept in the browser's storage, so no text file exists.
+   4. The key lives only in memory. Locking the page throws it away.
+   ===================================================================== */
+
+const STORE_KEY = "text-locker-v1";       // the name the data is stored under
+const ITERATIONS = 600000;                // higher = slower to guess passwords
+const enc = new TextEncoder();            // text -> bytes
+const dec = new TextDecoder();            // bytes -> text
+
+// Shortcut to find an element by its id
+const $ = id => document.getElementById(id);
+
+// ---------- Helpers to turn bytes into text and back (so we can store them) ----------
+function toB64(bytes) {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+}
+function fromB64(str) {
+  const s = atob(str);
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+
+// ---------- Storage (wrapped in try/catch because browsers can block it) ----------
+function loadVault() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function saveVault() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(vault));
+    return true;
+  } catch (e) {
+    say("editMsg", "Could not save. Your browser may be blocking storage.", true);
+    return false;
+  }
+}
+
+// ---------- Cryptography ----------
+// Turn password + salt into an AES key. This is the slow, safe step.
+async function deriveKey(password, salt) {
+  const base = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: ITERATIONS, hash: "SHA-256" },
+    base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+  );
+}
+// Lock text. A fresh random "iv" is used every time and stored in front of the result.
+async function lockText(text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(text)));
+  const out = new Uint8Array(iv.length + ct.length);
+  out.set(iv); out.set(ct, iv.length);
+  return toB64(out);
+}
+// Unlock text. Throws an error if the key (password) is wrong.
+async function unlockText(b64) {
+  const bytes = fromB64(b64);
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(0, 12) }, key, bytes.slice(12));
+  return dec.decode(plain);
+}
+
+// ---------- State ----------
+let vault = loadVault();   // { salt, check, entries: { noteName: lockedText } }
+let key = null;            // the unlocked key (memory only)
+let current = null;        // name of the note being edited
+let dirty = false;         // true when there are unsaved changes
+
+// ---------- Small UI helpers ----------
+function show(screen) {
+  for (const id of ["setup", "unlock", "editor"]) $(id).hidden = (id !== screen);
+}
+function say(id, text, bad) {
+  const el = $(id);
+  el.textContent = text;
+  el.classList.toggle("bad", !!bad);
+}
+function fillSelect() {
+  const sel = $("noteSelect");
+  sel.innerHTML = "";
+  for (const name of Object.keys(vault.entries)) {
+    const o = document.createElement("option");
+    o.value = name; o.textContent = name;
+    sel.appendChild(o);
+  }
+  sel.value = current;
+}
+async function openNote(name) {
+  current = name;
+  $("noteText").value = await unlockText(vault.entries[name]);
+  dirty = false;
+  fillSelect();
+}
+
+// ---------- Screen 1: create the locker ----------
+$("btnCreate").onclick = async () => {
+  const a = $("pw1").value, b = $("pw2").value;
+  if (a.length < 8) return say("setupMsg", "Use at least 8 characters.", true);
+  if (a !== b) return say("setupMsg", "The two passwords do not match.", true);
+  say("setupMsg", "Creating…");
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  key = await deriveKey(a, salt);
+  // "check" is a known word we lock now, so we can test the password later
+  vault = { salt: toB64(salt), check: await lockText("ok"), entries: {} };
+  vault.entries["Note"] = await lockText("");
+  if (!saveVault()) return;
+  $("pw1").value = $("pw2").value = "";
+  await openNote("Note");
+  show("editor");
+};
+
+// ---------- Screen 2: unlock ----------
+async function tryUnlock() {
+  const pw = $("pwUnlock").value;
+  if (!pw) return;
+  say("unlockMsg", "Unlocking…");
+  try {
+    key = await deriveKey(pw, fromB64(vault.salt));
+    if ((await unlockText(vault.check)) !== "ok") throw new Error("bad");
+  } catch (e) {
+    key = null;
+    return say("unlockMsg", "Wrong password. Try again.", true);
+  }
+  $("pwUnlock").value = "";
+  say("unlockMsg", "");
+  await openNote(Object.keys(vault.entries)[0]);
+  say("editMsg", "");
+  show("editor");
+}
+$("btnUnlock").onclick = tryUnlock;
+$("pwUnlock").addEventListener("keydown", e => { if (e.key === "Enter") tryUnlock(); });
+
+// ---------- Screen 3: editing ----------
+$("noteText").addEventListener("input", () => { dirty = true; say("editMsg", "Unsaved changes"); });
+
+$("noteSelect").onchange = async e => {
+  if (dirty && !confirm("You have unsaved changes. Switch anyway?")) { e.target.value = current; return; }
+  await openNote(e.target.value);
+  say("editMsg", "");
+};
+
+async function save() {
+  vault.entries[current] = await lockText($("noteText").value);
+  if (saveVault()) { dirty = false; say("editMsg", "Saved."); }
+}
+$("btnSave").onclick = save;
+// Ctrl+S (or Cmd+S) saves too, like in a normal text file
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && !$("editor").hidden) {
+    e.preventDefault(); save();
+  }
+});
+
+$("btnAdd").onclick = async () => {
+  const name = (prompt("Name for the new note (for example: passwords)") || "").trim();
+  if (!name) return;
+  if (name in vault.entries) return say("editMsg", "A note with that name already exists.", true);
+  if (dirty) await save();
+  vault.entries[name] = await lockText("");
+  saveVault();
+  await openNote(name);
+  say("editMsg", "Note added.");
+};
+
+$("btnDelete").onclick = async () => {
+  if (Object.keys(vault.entries).length < 2) return say("editMsg", "You need to keep at least one note.", true);
+  if (!confirm("Delete the note “" + current + "” for good?")) return;
+  delete vault.entries[current];
+  saveVault();
+  await openNote(Object.keys(vault.entries)[0]);
+  say("editMsg", "Note deleted.");
+};
+
+function lock() {
+  if (dirty && !confirm("You have unsaved changes. Lock anyway?")) return;
+  key = null; current = null; dirty = false;
+  $("noteText").value = "";
+  $("backupBox").value = ""; $("backupWrap").hidden = true;
+  show("unlock");
+}
+$("btnLock").onclick = lock;
+
+// ---------- Backup and restore ----------
+// The backup is the same locked data that sits in storage, as one piece of text.
+$("btnBackup").onclick = async () => {
+  const box = $("backupBox");
+  box.value = JSON.stringify(vault);
+  $("backupWrap").hidden = false;
+  $("backupWrap").open = true;
+  box.focus(); box.select();
+  try { await navigator.clipboard.writeText(box.value); say("editMsg", "Backup copied. Paste it somewhere safe."); }
+  catch (e) { say("editMsg", "Select the backup text below and copy it."); }
+};
+
+function restore(boxId) {
+  let data;
+  try { data = JSON.parse($(boxId).value.trim()); } catch (e) { data = null; }
+  if (!data || !data.salt || !data.check || !data.entries) {
+    return alert("That does not look like a Text Locker backup.");
+  }
+  if (loadVault() && !confirm("This replaces the notes stored in this browser. Continue?")) return;
+  vault = data;
+  if (!saveVault()) return;
+  $(boxId).value = "";
+  show("unlock");
+}
+$("btnRestore1").onclick = () => restore("restoreBox1");
+$("btnRestore2").onclick = () => restore("restoreBox2");
+
+// ---------- Show / hide password ----------
+// Each checkbox lists the password boxes it controls in data-targets.
+// Ticking it switches those boxes between dots (password) and readable text.
+document.querySelectorAll(".showpw").forEach(box => {
+  box.onchange = () => {
+    for (const id of box.dataset.targets.split(",")) {
+      $(id).type = box.checked ? "text" : "password";
+    }
+  };
+});
+
+// ---------- Offline support ----------
+// Registers sw.js, a helper that saves the page on the phone so it opens without internet.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+// ---------- Start ----------
+// No vault yet? Show setup. Otherwise show the password screen.
+show(vault ? "unlock" : "setup");
+</script>
+</body>
+</html>
