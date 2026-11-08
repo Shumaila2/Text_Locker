@@ -16,7 +16,7 @@ It started as a Python script that locked text into a data file and opened a tem
 
 **Current Version: v1.0 — Working**
 
-🔗 **Try it:** [spiffy-banoffee-de305b.netlify.app](https://spiffy-banoffee-de305b.netlify.app/)
+🔗 **Try it:** [http://textlocker.netlify.app/](http://textlocker.netlify.app/)
 
 ---
 
